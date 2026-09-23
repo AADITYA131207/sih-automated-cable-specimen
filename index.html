@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIH26030 - Automated Cable Specimen Preparation</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+<header class="top-header">
+    <div>
+        <h1>Automated Cable Specimen Preparation System</h1>
+        <p>SIH26030 · Digital Machine Prototype / Simulation</p>
+    </div>
+
+    <div class="header-status">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="systemStatus">READY</span>
+    </div>
+</header>
+
+<main class="container">
+
+    <!-- CONTROL PANEL -->
+    <section class="panel control-panel">
+
+        <div class="panel-title">
+            <div>
+                <h2>Process Control</h2>
+                <p>Select cable, statutory test requirements & controller architecture</p>
+            </div>
+            <!-- CONTROLLER MODE BADGE -->
+            <div id="controllerModeBadge" class="controller-badge esp32-badge">
+                <span class="badge-dot"></span>
+                <span id="badgeLabel">ACTIVE TARGET: ESP32-WROOM DUAL-CORE</span>
+            </div>
+        </div>
+
+        <div class="control-grid">
+
+            <div class="input-group">
+                <label for="cableDiameter">Cable Diameter (mm)</label>
+                <input
+                    type="number"
+                    id="cableDiameter"
+                    value="12"
+                    min="5"
+                    max="50"
+                    step="0.1"
+                >
+            </div>
+
+            <div class="input-group">
+                <label for="specimenLength">Specimen Length (mm)</label>
+                <input
+                    type="number"
+                    id="specimenLength"
+                    value="50"
+                    min="20"
+                    max="300"
+                >
+            </div>
+
+            <div class="input-group method-group">
+                <label for="testMethod">Test Method (IS 10810 / IS 7098)</label>
+                <select id="testMethod">
+                    <option value="insulation">Insulation Thickness (IS 10810 Part 5)</option>
+                    <option value="resistance">Conductor Resistance (IS 10810 Part 6)</option>
+                    <option value="sheath">Sheath Thickness (IS 7098)</option>
+                    <option value="flame">Flame Retardance Test Specimen</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label for="controllerSelect">Controller Target</label>
+                <select id="controllerSelect">
+                    <option value="esp32" selected>ESP32 Prototype (UART / FreeRTOS)</option>
+                    <option value="plc">Industrial PLC (Modbus TCP / IEC 61131-3)</option>
+                </select>
+            </div>
+
+        </div>
+
+        <!-- CONTROLLER RUNTIME TELEMETRY BAR -->
+        <div id="runtimeBar" class="runtime-info-bar">
+            <span class="runtime-item"><strong>Bus:</strong> <span id="diagBus">UART/Serial (115200)</span></span>
+            <span class="runtime-item"><strong>Logic:</strong> <span id="diagLogic">Non-blocking C++ FSM</span></span>
+            <span class="runtime-item"><strong>Speed Profile:</strong> <span id="diagSpeed">22.5 mm/s (Bench)</span></span>
+            <span class="runtime-item"><strong>Failsafe:</strong> <span id="diagSafety">GPIO 27 ISR (<50ms)</span></span>
+        </div>
+
+        <div class="button-row">
+            <button id="startBtn" class="btn btn-start">
+                ▶ START PROCESS
+            </button>
+
+            <button id="stopBtn" class="btn btn-stop">
+                ■ EMERGENCY STOP
+            </button>
+        </div>
+
+    </section>
+
+    <!-- MACHINE SIMULATION -->
+    <section class="panel machine-panel">
+
+        <div class="panel-heading">
+            <div>
+                <h2>Automated Machine Simulation</h2>
+                <p id="methodDescription">
+                    Circumferential insulation section preparation (IS 10810 Part 5)
+                </p>
+            </div>
+
+            <div class="machine-state">
+                <span>STATE</span>
+                <strong id="currentStage">READY</strong>
+            </div>
+        </div>
+
+        <div class="machine-wrapper">
+
+            <!-- CABLE INPUT -->
+            <div class="input-section">
+                <div class="section-label">CABLE INPUT</div>
+                <div class="cable-reel">
+                    <div class="reel-ring"></div>
+                    <div class="reel-center"></div>
+                </div>
+            </div>
+
+            <!-- MAIN MACHINE -->
+            <div class="machine-body">
+
+                <!-- CABLE -->
+                <div id="cable" class="continuous-cable">
+                    <div class="cable-core"></div>
+                </div>
+
+                <!-- DIAMETER SENSOR -->
+                <div class="sensor-zone diameter-zone">
+                    <div class="sensor-box">
+                        <div class="sensor-title">DIAMETER SENSOR</div>
+                        <div class="sensor-light"></div>
+                        <div class="sensor-value">
+                            <strong id="diameterValue">--</strong> mm
+                        </div>
+                    </div>
+                    <div id="diameterBeam" class="sensor-beam"></div>
+                </div>
+
+                <!-- FEED ROLLERS -->
+                <div class="roller-zone">
+                    <div class="roller top-roller"></div>
+                    <div class="roller bottom-roller"></div>
+                    <span>FEED</span>
+                </div>
+
+                <!-- ENCODER -->
+                <div class="encoder-zone">
+                    <div class="encoder-wheel">
+                        <div class="encoder-center"></div>
+                    </div>
+                    <div class="encoder-label">ENCODER</div>
+                    <strong id="encoderValue">0</strong>
+                    <small>pulses</small>
+                </div>
+
+                <!-- CLAMP -->
+                <div class="clamp-zone">
+                    <div id="clampTop" class="clamp clamp-top"></div>
+                    <div id="clampBottom" class="clamp clamp-bottom"></div>
+                    <div class="clamp-label">AUTOMATIC CLAMP</div>
+                    <div id="clampStatus" class="component-status">OPEN</div>
+                </div>
+
+                <!-- CUTTING STATION -->
+                <div id="cuttingZone" class="cutting-zone">
+                    <div class="station-label">CUTTING / STRIPPING</div>
+                    <div class="cutting-machine">
+                        <div class="actuator-body">
+                            <span>LINEAR ACTUATOR</span>
+                        </div>
+                        <div id="blade" class="blade">
+                            <div class="blade-edge"></div>
+                        </div>
+                        <div class="cut-position-marker">
+                            <span id="cutZoneLabel">CUT ZONE</span>
+                        </div>
+                        <div id="cutIndicator" class="cut-indicator">CUTTING</div>
+                    </div>
+
+                    <div id="bladeStatus" class="component-status">RETRACTED</div>
+                    <div class="cut-depth">
+                        Cut / Strip Depth:
+                        <strong id="cutDepth">--</strong> mm
+                    </div>
+
+                    <!-- METHOD-SPECIFIC VISUALS -->
+                    <div id="longitudinalCut" class="longitudinal-cut">LONGITUDINAL STRIP</div>
+                    <div id="ringCut1" class="ring-cut ring-1"></div>
+                    <div id="ringCut2" class="ring-cut ring-2"></div>
+                    <div id="ringCut3" class="ring-cut ring-3"></div>
+                    <div id="sheathSection" class="sheath-section">SHEATH SECTION</div>
+                </div>
+
+                <!-- VERIFICATION -->
+                <div class="verification-zone">
+                    <div class="verification-box">
+                        <div class="verification-title">VERIFICATION SENSOR</div>
+                        <div id="verificationBeam" class="verification-beam"></div>
+                        <div id="verificationStatus" class="component-status">WAITING</div>
+                    </div>
+                </div>
+
+                <!-- SPECIMEN OUTPUT -->
+                <div class="output-zone">
+                    <div class="section-label">SPECIMEN OUTPUT</div>
+                    <div id="specimen" class="specimen">SPECIMEN</div>
+                </div>
+
+                <!-- WASTE -->
+                <div class="waste-zone">
+                    <div class="section-label">WASTE</div>
+                    <div id="wastePiece" class="waste-piece">WASTE</div>
+                    <div class="waste-bin">WASTE BIN</div>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- PROCESS BAR -->
+        <div class="process-area">
+            <div class="process-info">
+                <span>PROCESS PROGRESS</span>
+                <strong id="processPercent">0%</strong>
+            </div>
+            <div class="progress-bar">
+                <div id="progressFill" class="progress-fill"></div>
+            </div>
+        </div>
+
+    </section>
+
+    <!-- TELEMETRY & COMMAND LOG -->
+    <section class="two-column">
+
+        <!-- LIVE TELEMETRY -->
+        <div class="panel">
+            <div class="panel-title">
+                <h2>Live Telemetry</h2>
+            </div>
+
+            <div class="telemetry-grid">
+                <div class="telemetry-card">
+                    <span>Cable Diameter</span>
+                    <strong id="telemetryDiameter">-- mm</strong>
+                </div>
+
+                <div class="telemetry-card">
+                    <span>Encoder Position</span>
+                    <strong id="telemetryEncoder">0</strong>
+                </div>
+
+                <div class="telemetry-card">
+                    <span>Clamp</span>
+                    <strong id="telemetryClamp">OPEN</strong>
+                </div>
+
+                <div class="telemetry-card">
+                    <span>Cutter</span>
+                    <strong id="telemetryCutter">RETRACTED</strong>
+                </div>
+
+                <div class="telemetry-card">
+                    <span>Verification</span>
+                    <strong id="telemetryVerification">WAITING</strong>
+                </div>
+
+                <div class="telemetry-card">
+                    <span>Safety Interlock</span>
+                    <strong id="telemetrySafety">SAFE</strong>
+                </div>
+
+                <!-- MODE-SPECIFIC DIAGNOSTIC REGISTER -->
+                <div class="telemetry-card highlight-card">
+                    <span id="regTitle">ADC Sensor Reading</span>
+                    <strong id="regValue">1584 mV (Pin 34)</strong>
+                </div>
+
+                <div class="telemetry-card highlight-card">
+                    <span id="cycleTitle">Target Cycle Window</span>
+                    <strong id="cycleValue">12.5 s (Bench Mode)</strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- COMMAND LOG -->
+        <div class="panel">
+            <div class="panel-title">
+                <h2>Controller Command Log</h2>
+            </div>
+            <div id="commandLog" class="command-log">
+                <div class="log-line">
+                    <span class="log-tag">INIT</span>
+                    System initialized in ESP32 Prototype Mode
+                </div>
+            </div>
+        </div>
+
+    </section>
+
+    <!-- ARCHITECTURE -->
+    <section class="panel architecture-panel">
+        <div class="panel-title">
+            <h2>Hardware ↔ Software Interaction</h2>
+        </div>
+
+        <div class="architecture">
+            <div class="arch-box">
+                <strong>SENSORS</strong>
+                <span>Diameter (ADC 34)</span>
+                <span>Encoder (GPIO 18/19)</span>
+                <span>Verification (GPIO 26)</span>
+                <span>Safety E-Stop (GPIO 27)</span>
+            </div>
+
+            <div class="arrow">→</div>
+
+            <div class="arch-box controller-box" id="archControllerBox">
+                <strong id="architectureController">ESP32 PROTOTYPE</strong>
+                <span id="archLine1">Non-Blocking 10-State FSM</span>
+                <span id="archLine2">FreeRTOS Core Isolation</span>
+                <span id="archLine3">A4988 1/16 Microstepping</span>
+            </div>
+
+            <div class="arrow">→</div>
+
+            <div class="arch-box">
+                <strong>ACTUATORS</strong>
+                <span>Feed Stepper (NEMA-17)</span>
+                <span>Clamping Servo (PWM 13)</span>
+                <span>Cutter Servo (PWM 14)</span>
+                <span>Ejection Solenoid</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- PROCESS DESCRIPTION -->
+    <section class="panel process-description">
+        <div class="panel-title">
+            <h2>Selected Method Operation</h2>
+        </div>
+        <div id="methodDetails" class="method-details">
+            <h3 id="methodHeader">Insulation Thickness (IS 10810 Part 5)</h3>
+            <p id="methodText">
+                Automated radial penetration cuts the outer sheath cleanly down to the core clearance boundary. Continuous rotational scoring prepares clean circular specimens for micrometer gauge testing without conductor deformation.
+            </p>
+        </div>
+    </section>
+
+</main>
+
+<footer>
+    <p>
+        SIH26030 · Automated Specimen Preparation Workcell · 
+        Dual Architecture Target: ESP32 Proof-of-Concept & Industrial PLC Migration (IS 10810 / IS 7098).
+    </p>
+    <p>
+        Compliant with Bureau of Indian Standards (BIS) Laboratory Testing Certification Guidelines.
+    </p>
+</footer>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
